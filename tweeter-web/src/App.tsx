@@ -10,14 +10,18 @@ import Login from "./components/authentication/login/Login";
 import Register from "./components/authentication/register/Register";
 import MainLayout from "./components/mainLayout/MainLayout";
 import Toaster from "./components/toaster/Toaster";
-import UserItemScroller from "./components/mainLayout/UserItemScroller";
-import StatusItemScroller from "./components/mainLayout/StatusItemScroller";
 import { useUserInfo } from "./components/userInfo/UserHooks";
 import { FolloweePresenter } from "./presenter/FolloweePresenter";
 import { FollowerPresenter } from "./presenter/FollowerPresenter";
 import { FeedPresenter } from "./presenter/FeedPresenter";
 import { StoryPresenter } from "./presenter/StoryPresenter";
-import { StatusItemView } from "./presenter/StatusItemPresenter";
+import { RegisterPresenter } from "./presenter/RegiterPresenter";
+import { LoginPresenter } from "./presenter/LoginPresenter";
+import { PagedItemView } from "./presenter/PagedItemPresenter";
+import { Status, User } from "tweeter-shared";
+import StatusItem from "./components/statusItem/StatusItem";
+import UserItem from "./components/userItem/UserItem";
+import ItemScroller from "./components/mainLayout/UserItemScroller";
 
 const App = () => {
   const { currentUser, authToken } = useUserInfo();
@@ -43,6 +47,20 @@ const App = () => {
 const AuthenticatedRoutes = () => {
   const { displayedUser } = useUserInfo();
 
+  const itemComponentFactory = (item: User | Status, featurePath: string) => {
+    if (item instanceof Status) {
+      return (
+        <StatusItem
+          status={item}
+          user={item.user}
+          formattedDate={item.formattedDate}
+          featurePath={featurePath}
+        />
+      );
+    }
+    return <UserItem user={item} featurePath={featurePath} />;
+  };
+
   return (
     <Routes>
       <Route element={<MainLayout />}>
@@ -53,44 +71,52 @@ const AuthenticatedRoutes = () => {
         <Route
           path="feed/:displayedUser"
           element={
-            <StatusItemScroller
+            <ItemScroller<Status>
               key={`feed-${displayedUser!.alias}`}
               featurePath="/feed"
-              presenterFactory={(view: StatusItemView) =>
+              presenterFactory={(view: PagedItemView<Status>) =>
                 new FeedPresenter(view)
               }
+              itemComponentFactory={itemComponentFactory}
             />
           }
         />
         <Route
           path="story/:displayedUser"
           element={
-            <StatusItemScroller
+            <ItemScroller<Status>
               key={`story-${displayedUser!.alias}`}
               featurePath="/story"
-              presenterFactory={(view: StatusItemView) =>
+              presenterFactory={(view: PagedItemView<Status>) =>
                 new StoryPresenter(view)
               }
+              itemComponentFactory={itemComponentFactory}
             />
           }
         />
         <Route
           path="followees/:displayedUser"
           element={
-            <UserItemScroller
+            <ItemScroller<User>
               key={`followees-${displayedUser!.alias}`}
               featurePath="/followees"
-              presenterFactory={(view) => new FolloweePresenter(view)}
+              presenterFactory={(view: PagedItemView<User>) =>
+                new FolloweePresenter(view)
+              }
+              itemComponentFactory={itemComponentFactory}
             />
           }
         />
         <Route
           path="followers/:displayedUser"
           element={
-            <UserItemScroller
+            <ItemScroller<User>
               key={`followers-${displayedUser!.alias}`}
               featurePath="/followers"
-              presenterFactory={(view) => new FollowerPresenter(view)}
+              presenterFactory={(view: PagedItemView<User>) =>
+                new FollowerPresenter(view)
+              }
+              itemComponentFactory={itemComponentFactory}
             />
           }
         />
@@ -110,9 +136,30 @@ const UnauthenticatedRoutes = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="*" element={<Login originalUrl={location.pathname} />} />
+      <Route
+        path="/login"
+        element={
+          <Login
+            presenterFactory={(view) => new LoginPresenter(view)}
+            originalUrl={location.pathname}
+          />
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <Register presenterFactory={(view) => new RegisterPresenter(view)} />
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <Login
+            presenterFactory={(view) => new LoginPresenter(view)}
+            originalUrl={location.pathname}
+          />
+        }
+      />
     </Routes>
   );
 };

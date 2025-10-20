@@ -1,15 +1,21 @@
 import "./Register.css";
 import "bootstrap/dist/css/bootstrap.css";
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthenticationFormLayout from "../AuthenticationFormLayout";
-import { AuthToken, FakeData, User } from "tweeter-shared";
-import { Buffer } from "buffer";
+import { AuthToken, User } from "tweeter-shared";
 import AuthFields from "../AuthenticationFields";
 import { useMessageActions } from "../../toaster/MessageHooks";
 import { useUserInfoActions } from "../../userInfo/UserHooks";
+import { AuthenticateView } from "../../../presenter/AuthenticatePresenter";
+import { RegisterPresenter } from "../../../presenter/RegiterPresenter";
 
-const Register = () => {
+interface RegisterProps {
+  originalUrl?: string;
+  presenterFactory: (listener: AuthenticateView) => RegisterPresenter;
+}
+
+const Register = (props: RegisterProps) => {
   const [currentAlias, setCurrentAlias] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -24,14 +30,37 @@ const Register = () => {
   const { updateUserInfo } = useUserInfoActions();
   const { displayErrorMessage } = useMessageActions();
 
-  const handleFieldChange = (alias: string, password: string) => {
-    setCurrentAlias(alias);
-    setCurrentPassword(password);
+  const listener: AuthenticateView = {
+    setIsLoading: (isLoading: boolean) => setIsLoading(isLoading),
+    updateUserInfo: (
+      currentUser: User,
+      displayedUser: User | null,
+      authToken: AuthToken,
+      remember: boolean
+    ) => updateUserInfo(currentUser, displayedUser, authToken, remember),
+    setCurrentAlias: (alias: string) => setCurrentAlias(alias),
+    setCurrentPassword: (password: string) => setCurrentPassword(password),
+    navigate: (url: string) => navigate(url),
+    displayErrorMessage: (message: string) => displayErrorMessage(message),
   };
 
+  const presenterRef = useRef<RegisterPresenter | null>(null);
+  if (!presenterRef.current) {
+    presenterRef.current = props.presenterFactory(listener);
+  }
+
   const handleSubmit = () => {
-    if (currentAlias && currentPassword && !checkSubmitButtonStatus()) {
-      doRegister(currentAlias, currentPassword);
+    if (!checkSubmitButtonStatus()) {
+      presenterRef.current!.authenticateUser(
+        currentAlias,
+        currentPassword,
+        rememberMe,
+        props.originalUrl ?? "",
+        firstName,
+        lastName,
+        imageBytes,
+        imageFileExtension
+      );
     }
   };
 
@@ -51,79 +80,30 @@ const Register = () => {
     handleImageFile(file);
   };
 
-  const handleImageFile = (file: File | undefined) => {
+  const handleImageFile = async (file: File | undefined) => {
     if (file) {
       setImageUrl(URL.createObjectURL(file));
 
-      const reader = new FileReader();
-      reader.onload = (event: ProgressEvent<FileReader>) => {
-        const imageStringBase64 = event.target?.result as string;
-        const imageStringBase64BufferContents =
-          imageStringBase64.split("base64,")[1];
-        const bytes: Uint8Array = Buffer.from(
-          imageStringBase64BufferContents,
-          "base64"
-        );
-        setImageBytes(bytes);
-      };
-      reader.readAsDataURL(file);
-
-      const fileExtension = getFileExtension(file);
-      if (fileExtension) {
-        setImageFileExtension(fileExtension);
-      }
+      await presenterRef.current!.processImageFile(
+        file,
+        (bytes: Uint8Array, extension: string) => {
+          setImageBytes(bytes);
+          setImageFileExtension(extension);
+        },
+        (error: string) => {
+          displayErrorMessage(error);
+          setImageUrl("");
+        }
+      );
     } else {
       setImageUrl("");
       setImageBytes(new Uint8Array());
+      setImageFileExtension("");
     }
   };
 
-  const getFileExtension = (file: File): string | undefined => {
-    return file.name.split(".").pop();
-  };
-
-  // Updated to use state values instead of parameters
-  const doRegister = async (alias: string, password: string) => {
-    try {
-      setIsLoading(true);
-
-      const [user, authToken] = await register(
-        firstName,
-        lastName,
-        alias,
-        password,
-        imageBytes,
-        imageFileExtension
-      );
-
-      updateUserInfo(user, user, authToken, rememberMe);
-      navigate(`/feed/${user.alias}`);
-    } catch (error) {
-      displayErrorMessage(
-        `Failed to register user because of exception: ${error}`,
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const register = async (
-    firstName: string,
-    lastName: string,
-    alias: string,
-    password: string,
-    userImageBytes: Uint8Array,
-    imageFileExtension: string
-  ): Promise<[User, AuthToken]> => {
-    const imageStringBase64: string =
-      Buffer.from(userImageBytes).toString("base64");
-    const user = FakeData.instance.firstUser;
-
-    if (user === null) {
-      throw new Error("Invalid registration");
-    }
-
-    return [user, FakeData.instance.authToken];
+  const handleFieldChange = (alias: string, password: string) => {
+    presenterRef.current!.handleFieldChange(alias, password);
   };
 
   const inputFieldFactory = () => {
@@ -151,7 +131,7 @@ const Register = () => {
           />
           <label htmlFor="lastNameInput">Last Name</label>
         </div>
-        <AuthFields onSubmit={doRegister} onFieldChange={handleFieldChange} />
+        <AuthFields onSubmit={handleSubmit} onFieldChange={handleFieldChange} />
         <div className="form-floating mb-3">
           <input
             type="file"

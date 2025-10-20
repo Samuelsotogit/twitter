@@ -1,7 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { useUserInfo, useUserInfoActions } from "../userInfo/UserHooks";
-import { AuthToken, User, FakeData } from "tweeter-shared";
+import { User } from "tweeter-shared";
 import { useMessageActions } from "../toaster/MessageHooks";
+import {
+  UseNavigatePresenter,
+  UseNavigateView,
+} from "../../presenter/UseNavigatePresenter";
+import { useRef } from "react";
 
 interface UserNavigationProps {
   featurePath: string;
@@ -13,36 +18,29 @@ export const useUserNavigation = ({ featurePath }: UserNavigationProps) => {
   const { setDisplayedUser } = useUserInfoActions();
   const navigate = useNavigate();
 
-  const extractAlias = (value: string): string => {
-    const index = value.indexOf("@");
-    return value.substring(index);
+  const listener: UseNavigateView = {
+    displayErrorMessage: (message: string) => displayErrorMessage(message),
+    setDisplayedUser: (user: User) => setDisplayedUser(user),
+    navigate: (path: string) => navigate(path),
   };
 
-  const getUser = async (
-    authToken: AuthToken,
-    alias: string
-  ): Promise<User | null> => {
-    // TODO: Replace with the result of calling server
-    return FakeData.instance.findUserByAlias(alias);
-  };
+  const presenterRef = useRef<UseNavigatePresenter | null>(null);
+  if (!presenterRef.current) {
+    presenterRef.current = new UseNavigatePresenter(listener);
+  }
 
   const navigateToUser = async (event: React.MouseEvent): Promise<void> => {
     event.preventDefault();
 
-    try {
-      const alias = extractAlias(event.target.toString());
+    const target = event.target as HTMLElement;
+    const textContent = target.textContent || target.innerText || "";
 
-      const toUser = await getUser(authToken!, alias);
-
-      if (toUser) {
-        if (!toUser.equals(displayedUser!)) {
-          setDisplayedUser(toUser);
-          navigate(`${featurePath}/${toUser.alias}`);
-        }
-      }
-    } catch (error) {
-      displayErrorMessage(`Failed to get user because of exception: ${error}`);
-    }
+    presenterRef.current!.navigateToUser(
+      textContent,
+      displayedUser,
+      authToken!,
+      featurePath
+    );
   };
 
   return {

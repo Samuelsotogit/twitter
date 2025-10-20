@@ -1,15 +1,21 @@
 import "./Login.css";
 import "bootstrap/dist/css/bootstrap.css";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthenticationFormLayout from "../AuthenticationFormLayout";
-import { AuthToken, FakeData, User } from "tweeter-shared";
+import { AuthToken, User } from "tweeter-shared";
 import AuthFields from "../AuthenticationFields";
 import { useMessageActions } from "../../toaster/MessageHooks";
 import { useUserInfoActions } from "../../userInfo/UserHooks";
+import {
+  AuthenticatePresenter,
+  AuthenticateView,
+} from "../../../presenter/AuthenticatePresenter";
+import { LoginPresenter } from "../../../presenter/LoginPresenter";
 
 interface Props {
   originalUrl?: string;
+  presenterFactory: (view: AuthenticateView) => AuthenticatePresenter;
 }
 
 const Login = (props: Props) => {
@@ -22,55 +28,45 @@ const Login = (props: Props) => {
   const { updateUserInfo } = useUserInfoActions();
   const { displayErrorMessage } = useMessageActions();
 
-  const handleFieldChange = (alias: string, password: string) => {
-    setCurrentAlias(alias);
-    setCurrentPassword(password);
+  const listener: AuthenticateView = {
+    setIsLoading: (isLoading: boolean) => setIsLoading(isLoading),
+    updateUserInfo: (
+      currentUser: User,
+      displayedUser: User | null,
+      authToken: AuthToken,
+      remember: boolean
+    ) => updateUserInfo(currentUser, displayedUser, authToken, remember),
+    setCurrentAlias: (alias: string) => setCurrentAlias(alias),
+    setCurrentPassword: (password: string) => setCurrentPassword(password),
+    navigate: (url: string) => navigate(url),
+    displayErrorMessage: (message: string) => displayErrorMessage(message),
   };
+
+  const presenterRef = useRef<LoginPresenter | null>(null);
+  if (!presenterRef.current) {
+    presenterRef.current = props.presenterFactory(listener);
+  }
 
   const handleSubmit = () => {
-    if (currentAlias && currentPassword) {
-      doLogin(currentAlias, currentPassword);
-    }
+    presenterRef.current!.authenticateUser(
+      currentAlias,
+      currentPassword,
+      rememberMe,
+      props.originalUrl || ""
+    );
   };
 
-  const doLogin = async (alias: string, password: string) => {
-    try {
-      setIsLoading(true);
-
-      const [user, authToken] = await login(alias, password);
-
-      updateUserInfo(user, user, authToken, rememberMe);
-
-      if (!!props.originalUrl) {
-        navigate(props.originalUrl);
-      } else {
-        navigate(`/feed/${user.alias}`);
-      }
-    } catch (error) {
-      displayErrorMessage(
-        `Failed to log user in because of exception: ${error}`
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const login = async (
-    alias: string,
-    password: string
-  ): Promise<[User, AuthToken]> => {
-    // TODO: Replace with the result of calling the server
-    const user = FakeData.instance.firstUser;
-
-    if (user === null) {
-      throw new Error("Invalid alias or password");
-    }
-
-    return [user, FakeData.instance.authToken];
+  const handleFieldChange = (alias: string, password: string) => {
+    presenterRef.current!.handleFieldChange(alias, password);
   };
 
   const inputFieldFactory = () => {
-    return <AuthFields onSubmit={doLogin} onFieldChange={handleFieldChange} />;
+    return (
+      <AuthFields
+        onSubmit={handleSubmit}
+        onFieldChange={handleFieldChange} // ✅ Properly bound
+      />
+    );
   };
 
   const switchAuthenticationMethodFactory = () => {
