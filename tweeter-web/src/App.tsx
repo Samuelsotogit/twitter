@@ -21,7 +21,7 @@ import { PagedItemView } from "./presenter/PagedItemPresenter";
 import { Status, User } from "tweeter-shared";
 import StatusItem from "./components/statusItem/StatusItem";
 import UserItem from "./components/userItem/UserItem";
-import ItemScroller from "./components/mainLayout/UserItemScroller";
+import ItemScroller from "./components/mainLayout/ItemScroller";
 
 const App = () => {
   const { currentUser, authToken } = useUserInfo();
